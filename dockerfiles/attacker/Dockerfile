@@ -31,6 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # TUN/TAP interface management (Ligolo-ng method)
     iproute2 \
     iptables \
+    # socat — TCP relay chains (Method 4)
+    socat \
+    # sshuttle — transparent VPN over SSH (Method 5)
+    sshuttle \
     # Quality of life
     vim \
     nano \
@@ -82,7 +86,8 @@ RUN mkdir -p /opt/chisel && \
 # ──────────────────────────────────────────────
 RUN mkdir -p /opt/serve && \
     ln -s /opt/ligolo/ligolo-agent /opt/serve/ligolo-agent && \
-    ln -s /opt/chisel/chisel /opt/serve/chisel
+    ln -s /opt/chisel/chisel /opt/serve/chisel && \
+    ln -s /usr/bin/socat /opt/serve/socat
 
 # ──────────────────────────────────────────────
 # 6. Proxychains configuration
@@ -115,15 +120,20 @@ RUN echo '#!/bin/bash' > /etc/profile.d/lab-banner.sh && \
     echo 'echo "    Ligolo-ng proxy : /opt/ligolo/ligolo-proxy"' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo "    Ligolo-ng agent : /opt/ligolo/ligolo-agent"' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo "    Chisel          : /opt/chisel/chisel"' >> /etc/profile.d/lab-banner.sh && \
-    echo 'echo "    Serve dir       : /opt/serve/"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    socat           : /usr/bin/socat"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    sshuttle        : /usr/bin/sshuttle"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    Serve dir       : /opt/serve/ (ligolo-agent, chisel, socat)"' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo ""' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo "  To serve tools to targets:"' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo "    cd /opt/serve && python3 -m http.server 8000"' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo ""' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo "  Tunneling methods available:"' >> /etc/profile.d/lab-banner.sh && \
-    echo 'echo "    1. SSH + proxychains  (traditional)"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    1. SSH + proxychains  (traditional SOCKS)"' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo "    2. Chisel             (SOCKS over HTTP)"' >> /etc/profile.d/lab-banner.sh && \
-    echo 'echo "    3. Ligolo-ng          (TUN interface)"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    3. Ligolo-ng          (TUN interface, cleanest)"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    4. socat              (TCP relay chains)"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    5. sshuttle           (transparent VPN over SSH)"' >> /etc/profile.d/lab-banner.sh && \
+    echo 'echo "    6. netsh              (Windows built-in — see README)"' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo ""' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo "============================================="' >> /etc/profile.d/lab-banner.sh && \
     echo 'echo ""' >> /etc/profile.d/lab-banner.sh && \

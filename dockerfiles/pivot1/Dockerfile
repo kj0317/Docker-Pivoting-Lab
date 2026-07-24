@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 1. System packages
 # ──────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # SSH server (for method 1: SSH tunneling)
+    # SSH server (for method 1: SSH tunneling, and sshuttle)
     openssh-server \
     # Web app runtime
     python3 \
@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Tools the learner will need after getting a foothold
     curl \
     wget \
+    # socat — for relay chaining and sshuttle's Python transport
+    socat \
     # Basic utilities (what you'd find on a real server)
     iputils-ping \
     iproute2 \

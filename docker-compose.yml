@@ -10,10 +10,13 @@
 #   │ .1.10    │  │ .1.20 / .2.20│  │ .2.30 / .3.30│  │  .3.40   │
 #   └──────────┘  └──────────────┘  └──────────────┘  └──────────┘
 #
-#  Three tunneling methods supported:
-#    1. SSH + proxychains (traditional)
+#  Six tunneling methods supported:
+#    1. SSH + proxychains (traditional SOCKS)
 #    2. Chisel (SOCKS over HTTP)
 #    3. Ligolo-ng (TUN interface)
+#    4. socat (TCP relay chains)
+#    5. sshuttle (transparent VPN over SSH)
+#    6. netsh (Windows built-in — documented in README)
 #
 #  Build & run:
 #    docker compose build

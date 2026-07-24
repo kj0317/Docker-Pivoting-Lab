@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     curl \
     wget \
+    # socat — for relay chaining (Method 4) and as a netsh Linux analogue
+    socat \
     iputils-ping \
     iproute2 \
     net-tools \

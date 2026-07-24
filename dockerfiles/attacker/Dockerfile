@@ -56,13 +56,13 @@ ARG TARGETARCH
 # ──────────────────────────────────────────────
 RUN mkdir -p /opt/ligolo && \
     # Download proxy (runs on attacker)
-    curl -fsSL "https://github.com/nicocha30/ligolo-ng/releases/download/v${LIGOLO_VERSION}/ligolo-ng_proxy_${LIGOLO_VERSION}_linux_${TARGETARCH}.tar.gz" \
+    curl -fsSLk "https://github.com/nicocha30/ligolo-ng/releases/download/v${LIGOLO_VERSION}/ligolo-ng_proxy_${LIGOLO_VERSION}_linux_${TARGETARCH}.tar.gz" \
         -o /tmp/ligolo-proxy.tar.gz && \
     tar -xzf /tmp/ligolo-proxy.tar.gz -C /opt/ligolo/ && \
     mv /opt/ligolo/proxy /opt/ligolo/ligolo-proxy && \
     chmod +x /opt/ligolo/ligolo-proxy && \
     # Download agent (will be served to compromised hosts)
-    curl -fsSL "https://github.com/nicocha30/ligolo-ng/releases/download/v${LIGOLO_VERSION}/ligolo-ng_agent_${LIGOLO_VERSION}_linux_${TARGETARCH}.tar.gz" \
+    curl -fsSLk "https://github.com/nicocha30/ligolo-ng/releases/download/v${LIGOLO_VERSION}/ligolo-ng_agent_${LIGOLO_VERSION}_linux_${TARGETARCH}.tar.gz" \
         -o /tmp/ligolo-agent.tar.gz && \
     tar -xzf /tmp/ligolo-agent.tar.gz -C /opt/ligolo/ && \
     mv /opt/ligolo/agent /opt/ligolo/ligolo-agent && \
@@ -73,7 +73,7 @@ RUN mkdir -p /opt/ligolo && \
 # 4. Chisel — single binary acts as both server and client
 # ──────────────────────────────────────────────
 RUN mkdir -p /opt/chisel && \
-    curl -fsSL "https://github.com/jpillora/chisel/releases/download/v${CHISEL_VERSION}/chisel_${CHISEL_VERSION}_linux_${TARGETARCH}.gz" \
+    curl -fsSLk "https://github.com/jpillora/chisel/releases/download/v${CHISEL_VERSION}/chisel_${CHISEL_VERSION}_linux_${TARGETARCH}.gz" \
         -o /tmp/chisel.gz && \
     gunzip /tmp/chisel.gz && \
     mv /tmp/chisel /opt/chisel/chisel && \

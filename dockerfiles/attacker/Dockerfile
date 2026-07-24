@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 
 # Versions - bump these as new releases come out
-ARG LIGOLO_VERSION=0.8.2
+ARG LIGOLO_VERSION=0.9
 ARG CHISEL_VERSION=1.11.3
 
 # Avoid interactive prompts during build
@@ -14,7 +14,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Networking / enumeration
     nmap \
     netcat-openbsd \
-    socat \
     iputils-ping \
     traceroute \
     dnsutils \
